@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiUrl, getCampaignContract, getRewardsContract } from './config';
+import { apiClient } from './lib/apiClient';
 import ClaimRewards from './ClaimRewards';
 import './Landing.css';
 import RegisterCampaign from './RegisterCampaign';
@@ -66,25 +67,14 @@ export default function Landing({
     setIsCampaignsLoading(true);
     setCampaignsError('');
 
-    const params = new URLSearchParams({
-      page: String(campaignPage),
-      limit: String(CAMPAIGNS_PER_PAGE),
-    });
-    if (campaignQuery.trim().length > 0) {
-      params.set('q', campaignQuery.trim());
-    }
-
-    fetch(apiUrl(`/api/v1/campaigns?${params.toString()}`), {
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error(`Campaign API returned ${response.status}`);
-        }
-
-        return response.json();
+    apiClient
+      .getCampaigns({
+        page: campaignPage,
+        limit: CAMPAIGNS_PER_PAGE,
+        q: campaignQuery.trim() || undefined,
       })
       .then((payload) => {
+        if (controller.signal.aborted) return;
         const items = Array.isArray(payload) ? payload : (payload.data ?? payload.campaigns ?? []);
         logSafeEvent('campaigns_list_loaded', { count: items.length });
         const nextPagination = Array.isArray(payload)
@@ -100,9 +90,7 @@ export default function Landing({
         setPagination(nextPagination);
       })
       .catch((error) => {
-        if (error.name === 'AbortError') {
-          return;
-        }
+        if (controller.signal.aborted) return;
 
         setCampaigns([]);
         setPagination(getFallbackPagination([], campaignPage));

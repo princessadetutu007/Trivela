@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import Landing from './Landing';
 import CampaignDetail from './CampaignDetail';
 import AdminCampaigns from './AdminCampaigns';
+import About from './About';
 import { applyTheme, getPreferredTheme, THEME_STORAGE_KEY } from './theme';
 import { getRuntimeConfig, initializeRuntimeConfig, setRuntimeStellarNetwork } from './config';
 import {
@@ -180,6 +181,23 @@ export default function App() {
         path="/admin"
         element={
           <AdminCampaigns
+            theme={theme}
+            onToggleTheme={toggleTheme}
+            stellarNetwork={runtimeConfig.stellar.network}
+            onChangeStellarNetwork={handleChangeStellarNetwork}
+            walletAddress={walletAddress}
+            walletBalance={walletBalance}
+            isWalletLoading={isWalletLoading}
+            isWalletBalanceLoading={isWalletBalanceLoading}
+            onConnectWallet={connectWallet}
+            onDisconnectWallet={disconnectWallet}
+          />
+        }
+      />
+      <Route
+        path="/about"
+        element={
+          <About
             theme={theme}
             onToggleTheme={toggleTheme}
             stellarNetwork={runtimeConfig.stellar.network}

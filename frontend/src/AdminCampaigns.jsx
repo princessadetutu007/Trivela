@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Header from './components/Header';
 import CreateCampaign from './CreateCampaign';
-import { apiUrl } from './config';
+import { apiClient } from './lib/apiClient';
 import { logSafeEvent } from './lib/safeAnalytics';
 import './Landing.css';
 
@@ -25,11 +25,7 @@ export default function AdminCampaigns({
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(apiUrl('/api/v1/campaigns'));
-      if (!response.ok) {
-        throw new Error(`Campaign API returned ${response.status}`);
-      }
-      const payload = await response.json();
+      const payload = await apiClient.getCampaigns();
       setCampaigns(payload.data || []);
       logSafeEvent('admin_campaigns_loaded', { count: payload.data?.length ?? 0 });
     } catch (fetchError) {

@@ -118,8 +118,18 @@ export function createSqliteCampaignRepository({
     }
   }
 
-  /** @param {{ active?: boolean, q?: string, includeHidden?: boolean }} [opts] */
-  function list({ active, q, includeHidden = false } = {}) {
+  const SORTABLE_COLUMNS = new Set(['name', 'created_at', 'updated_at', 'reward_per_action', 'id']);
+
+  /**
+   * @param {{
+   *   active?: boolean,
+   *   q?: string,
+   *   includeHidden?: boolean,
+   *   sort?: string,
+   *   order?: 'asc' | 'desc'
+   * }} [opts]
+   */
+  function list({ active, q, includeHidden = false, sort, order } = {}) {
     const where = [];
     const params = [];
 
@@ -138,8 +148,15 @@ export function createSqliteCampaignRepository({
       params.push(term, term);
     }
 
+    const sortCol = sort && SORTABLE_COLUMNS.has(sort) ? sort : 'id';
+    const sortDir = order === 'asc' ? 'ASC' : 'DESC';
+    // featured campaigns always surface first unless explicitly sorting by another column
+    const orderClause = sort
+      ? `ORDER BY ${sortCol} ${sortDir}`
+      : `ORDER BY featured DESC, id ASC`;
+
     const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
-    const sql = `SELECT * FROM campaigns ${whereClause} ORDER BY featured DESC, id ASC`;
+    const sql = `SELECT * FROM campaigns ${whereClause} ${orderClause}`;
     return db.prepare(sql).all(...params).map(rowToCampaign);
   }
 

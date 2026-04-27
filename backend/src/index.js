@@ -436,7 +436,9 @@ export function createApp(options = {}) {
         ? req.query.active === 'true'
         : undefined;
     const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
-    const items = campaignRepository.list({ active: activeFilter, q });
+    const sort = typeof req.query.sort === 'string' ? req.query.sort : undefined;
+    const order = req.query.order === 'asc' ? 'asc' : req.query.order === 'desc' ? 'desc' : undefined;
+    const items = campaignRepository.list({ active: activeFilter, q, sort, order });
     const payload = paginateItems(items, req.query);
     shortCache.set(cacheKey, {
       expiresAt: Date.now() + shortCacheTtlMs,
