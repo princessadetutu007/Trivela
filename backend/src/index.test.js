@@ -790,3 +790,152 @@ test('createApp throws in production when CORS is not configured', () => {
     process.env.NODE_ENV = originalEnv;
   }
 });
+
+// #232 — featured flag: ordering and admin toggle
+test('GET /api/v1/campaigns returns featured campaigns first', async () => {
+  const seed = [
+    { name: 'Regular A', description: '', active: true, rewardPerAction: 1, createdAt: new Date().toISOString() },
+    { name: 'Regular B', description: '', active: true, rewardPerAction: 1, createdAt: new Date().toISOString() },
+  ];
+  const { server, baseUrl } = await startTestServer({ campaigns: seed });
+
+  try {
+    // Mark the second campaign as featured via PUT
+    await fetch(`${baseUrl}/api/v1/campaigns/2`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ featured: true }),
+    });
+
+    const response = await fetch(`${baseUrl}/api/v1/campaigns`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.data[0].id, '2');
+    assert.equal(body.data[0].featured, true);
+    assert.equal(body.data[1].featured, false);
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+test('PUT /api/v1/campaigns/:id can set and unset featured', async () => {
+  const { server, baseUrl } = await startTestServer();
+
+  try {
+    const setResp = await fetch(`${baseUrl}/api/v1/campaigns/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ featured: true }),
+    });
+    assert.equal(setResp.status, 200);
+    const set = await setResp.json();
+    assert.equal(set.featured, true);
+
+    const unsetResp = await fetch(`${baseUrl}/api/v1/campaigns/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ featured: false }),
+    });
+    assert.equal(unsetResp.status, 200);
+    const unset = await unsetResp.json();
+    assert.equal(unset.featured, false);
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+// #234 — hidden flag: moderation
+test('hidden campaigns do not appear in GET /api/v1/campaigns list', async () => {
+  const seed = [
+    { name: 'Visible Campaign', description: '', active: true, rewardPerAction: 5, createdAt: new Date().toISOString() },
+    { name: 'Spam Campaign', description: '', active: true, rewardPerAction: 5, createdAt: new Date().toISOString() },
+  ];
+  const { server, baseUrl } = await startTestServer({ campaigns: seed });
+
+  try {
+    // Hide the second campaign
+    await fetch(`${baseUrl}/api/v1/campaigns/2`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hidden: true, hiddenReason: 'spam' }),
+    });
+
+    const listResp = await fetch(`${baseUrl}/api/v1/campaigns`);
+    const body = await listResp.json();
+    assert.equal(body.data.length, 1);
+    assert.equal(body.data[0].name, 'Visible Campaign');
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+test('GET /api/v1/campaigns/:id still returns a hidden campaign by id', async () => {
+  const { server, baseUrl } = await startTestServer();
+
+  try {
+    await fetch(`${baseUrl}/api/v1/campaigns/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hidden: true, hiddenReason: 'abuse' }),
+    });
+
+    const resp = await fetch(`${baseUrl}/api/v1/campaigns/1`);
+    assert.equal(resp.status, 200);
+    const body = await resp.json();
+    assert.equal(body.hidden, true);
+    assert.equal(body.hiddenReason, 'abuse');
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+test('PUT /api/v1/campaigns/:id rejects non-boolean hidden and non-string hiddenReason', async () => {
+  const { server, baseUrl } = await startTestServer();
+
+  try {
+    const resp = await fetch(`${baseUrl}/api/v1/campaigns/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hidden: 'yes' }),
+    });
+    assert.equal(resp.status, 400);
+
+    const resp2 = await fetch(`${baseUrl}/api/v1/campaigns/1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hiddenReason: 42 }),
+    });
+    assert.equal(resp2.status, 400);
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+// #230 — explorer endpoint
+test('GET /api/v1/explorer returns correct URL for testnet', async () => {
+  const { server, baseUrl } = await startTestServer({ stellarNetwork: 'testnet' });
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/explorer`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.network, 'testnet');
+    assert.equal(body.explorerUrl, 'https://stellar.expert/explorer/testnet');
+  } finally {
+    await stopTestServer(server);
+  }
+});
+
+test('GET /api/v1/explorer returns correct URL for mainnet', async () => {
+  const { server, baseUrl } = await startTestServer({ stellarNetwork: 'mainnet' });
+
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/explorer`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.network, 'mainnet');
+    assert.equal(body.explorerUrl, 'https://stellar.expert/explorer/public');
+  } finally {
+    await stopTestServer(server);
+  }
+});

@@ -205,3 +205,83 @@ test('campaign repository update can set and clear startDate/endDate', () => {
   assert.equal(cleared.status, 'active');
   assert.equal(cleared.startDate, null);
 });
+
+// #232 — featured flag and ordering
+test('featured campaigns sort before non-featured campaigns', () => {
+  const repository = createSqliteCampaignRepository();
+
+  repository.create({ name: 'Regular A', rewardPerAction: 1 });
+  const featured = repository.create({ name: 'Featured One', rewardPerAction: 1, featured: true });
+  repository.create({ name: 'Regular B', rewardPerAction: 1 });
+
+  const results = repository.list();
+  assert.equal(results[0].id, featured.id);
+  assert.equal(results[0].featured, true);
+  assert.equal(results[1].featured, false);
+  assert.equal(results[2].featured, false);
+});
+
+test('update can set and unset featured flag', () => {
+  const repository = createSqliteCampaignRepository();
+
+  const campaign = repository.create({ name: 'Promo', rewardPerAction: 5 });
+  assert.equal(campaign.featured, false);
+
+  const featured = repository.update(campaign.id, { featured: true });
+  assert.equal(featured.featured, true);
+
+  const unfeatured = repository.update(campaign.id, { featured: false });
+  assert.equal(unfeatured.featured, false);
+});
+
+// #234 — hidden flag and moderation
+test('hidden campaigns are excluded from public list', () => {
+  const repository = createSqliteCampaignRepository();
+
+  repository.create({ name: 'Visible', rewardPerAction: 1 });
+  const hidden = repository.create({ name: 'Hidden Spam', rewardPerAction: 1 });
+  repository.update(hidden.id, { hidden: true, hiddenReason: 'spam' });
+
+  const results = repository.list();
+  assert.equal(results.length, 1);
+  assert.equal(results[0].name, 'Visible');
+});
+
+test('hidden campaigns are still accessible by id', () => {
+  const repository = createSqliteCampaignRepository();
+
+  const campaign = repository.create({ name: 'Abusive Campaign', rewardPerAction: 1 });
+  repository.update(campaign.id, { hidden: true, hiddenReason: 'abuse' });
+
+  const fetched = repository.getById(campaign.id);
+  assert.ok(fetched);
+  assert.equal(fetched.hidden, true);
+  assert.equal(fetched.hiddenReason, 'abuse');
+});
+
+test('update can set and clear hidden flag and reason', () => {
+  const repository = createSqliteCampaignRepository();
+
+  const campaign = repository.create({ name: 'Test Mod', rewardPerAction: 1 });
+  assert.equal(campaign.hidden, false);
+  assert.equal(campaign.hiddenReason, null);
+
+  const hidden = repository.update(campaign.id, { hidden: true, hiddenReason: 'spam' });
+  assert.equal(hidden.hidden, true);
+  assert.equal(hidden.hiddenReason, 'spam');
+
+  const restored = repository.update(campaign.id, { hidden: false, hiddenReason: null });
+  assert.equal(restored.hidden, false);
+  assert.equal(restored.hiddenReason, null);
+});
+
+test('list includeHidden option exposes hidden campaigns', () => {
+  const repository = createSqliteCampaignRepository();
+
+  repository.create({ name: 'Visible', rewardPerAction: 1 });
+  const hidden = repository.create({ name: 'Hidden', rewardPerAction: 1 });
+  repository.update(hidden.id, { hidden: true });
+
+  assert.equal(repository.list().length, 1);
+  assert.equal(repository.list({ includeHidden: true }).length, 2);
+});

@@ -6,12 +6,14 @@ export const STELLAR_NETWORKS = {
     networkPassphrase: Networks.TESTNET,
     sorobanRpcUrl: 'https://soroban-testnet.stellar.org',
     horizonUrl: 'https://horizon-testnet.stellar.org',
+    explorerUrl: 'https://stellar.expert/explorer/testnet',
   },
   mainnet: {
     network: 'mainnet',
     networkPassphrase: Networks.PUBLIC,
     sorobanRpcUrl: 'https://soroban-mainnet.stellar.org',
     horizonUrl: 'https://horizon.stellar.org',
+    explorerUrl: 'https://stellar.expert/explorer/public',
   },
 };
 

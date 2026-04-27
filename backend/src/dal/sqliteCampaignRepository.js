@@ -11,9 +11,22 @@ CREATE TABLE IF NOT EXISTS campaigns (
   reward_per_action INTEGER NOT NULL DEFAULT 0,
   start_date        TEXT,
   end_date          TEXT,
+  featured          INTEGER NOT NULL DEFAULT 0,
+  hidden            INTEGER NOT NULL DEFAULT 0,
+  hidden_reason     TEXT,
   created_at        TEXT    NOT NULL,
   updated_at        TEXT    NOT NULL
 );
+`;
+
+// Indexes for common query patterns (slug lookups, active/hidden/featured filters, date ordering, search).
+const INDEXES = `
+CREATE INDEX IF NOT EXISTS idx_campaigns_slug       ON campaigns(slug);
+CREATE INDEX IF NOT EXISTS idx_campaigns_active     ON campaigns(active);
+CREATE INDEX IF NOT EXISTS idx_campaigns_hidden     ON campaigns(hidden);
+CREATE INDEX IF NOT EXISTS idx_campaigns_featured   ON campaigns(featured);
+CREATE INDEX IF NOT EXISTS idx_campaigns_created_at ON campaigns(created_at);
+CREATE INDEX IF NOT EXISTS idx_campaigns_name       ON campaigns(name);
 `;
 
 /**
@@ -50,6 +63,9 @@ function rowToCampaign(row) {
     rewardPerAction: row.reward_per_action,
     startDate: row.start_date ?? null,
     endDate: row.end_date ?? null,
+    featured: row.featured === 1,
+    hidden: row.hidden === 1,
+    hiddenReason: row.hidden_reason ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? row.created_at,
   };
@@ -64,12 +80,26 @@ export function createSqliteCampaignRepository({
   const db = new Database(dbPath);
   db.exec(SCHEMA);
 
+  // Migrate columns added after initial release.
   const campaignColumns = db.prepare('PRAGMA table_info(campaigns)').all();
-  const hasUpdatedAt = campaignColumns.some((column) => column.name === 'updated_at');
-  if (!hasUpdatedAt) {
+  const columnNames = new Set(campaignColumns.map((c) => c.name));
+
+  if (!columnNames.has('updated_at')) {
     db.exec('ALTER TABLE campaigns ADD COLUMN updated_at TEXT');
     db.exec('UPDATE campaigns SET updated_at = created_at WHERE updated_at IS NULL');
   }
+  if (!columnNames.has('featured')) {
+    db.exec('ALTER TABLE campaigns ADD COLUMN featured INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columnNames.has('hidden')) {
+    db.exec('ALTER TABLE campaigns ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!columnNames.has('hidden_reason')) {
+    db.exec('ALTER TABLE campaigns ADD COLUMN hidden_reason TEXT');
+  }
+
+  // Create indexes after all columns are guaranteed to exist.
+  db.exec(INDEXES);
 
   const hasFeatured = campaignColumns.some((column) => column.name === 'featured');
   if (!hasFeatured) {
@@ -80,7 +110,11 @@ export function createSqliteCampaignRepository({
     const count = db.prepare('SELECT COUNT(*) AS n FROM campaigns').get().n;
     if (count === 0) {
       const insert = db.prepare(
+<<<<<<< feat/campaign-indexes-featured-hidden-explorer
+        'INSERT INTO campaigns (name, slug, description, active, reward_per_action, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+=======
         'INSERT INTO campaigns (name, slug, description, active, featured, reward_per_action, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+>>>>>>> main
       );
       const insertMany = db.transaction((rows) => {
         for (const row of rows) {
@@ -103,39 +137,30 @@ export function createSqliteCampaignRepository({
     }
   }
 
-  function list({ active, q } = {}) {
-    const hasQuery = typeof q === 'string' && q.length > 0;
-    const queryTerm = hasQuery ? `%${q.toLowerCase()}%` : null;
+  // Builds a paginated list. Featured campaigns sort first, then by id.
+  // Hidden campaigns are excluded unless includeHidden is true (admin use).
+  function list({ active, q, includeHidden = false } = {}) {
+    const where = [];
+    const params = [];
 
-    if (active !== undefined && hasQuery) {
-      return db
-        .prepare(
-          'SELECT * FROM campaigns WHERE active = ? AND (LOWER(name) LIKE ? OR LOWER(description) LIKE ?) ORDER BY id ASC',
-        )
-        .all(active ? 1 : 0, queryTerm, queryTerm)
-        .map(rowToCampaign);
-    }
-
-    if (hasQuery) {
-      return db
-        .prepare(
-          'SELECT * FROM campaigns WHERE LOWER(name) LIKE ? OR LOWER(description) LIKE ? ORDER BY id ASC',
-        )
-        .all(queryTerm, queryTerm)
-        .map(rowToCampaign);
+    if (!includeHidden) {
+      where.push('hidden = 0');
     }
 
     if (active !== undefined) {
-      return db
-        .prepare('SELECT * FROM campaigns WHERE active = ? ORDER BY id ASC')
-        .all(active ? 1 : 0)
-        .map(rowToCampaign);
+      where.push('active = ?');
+      params.push(active ? 1 : 0);
     }
 
-    return db
-      .prepare('SELECT * FROM campaigns ORDER BY id ASC')
-      .all()
-      .map(rowToCampaign);
+    if (typeof q === 'string' && q.length > 0) {
+      const term = `%${q.toLowerCase()}%`;
+      where.push('(LOWER(name) LIKE ? OR LOWER(description) LIKE ?)');
+      params.push(term, term);
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+    const sql = `SELECT * FROM campaigns ${whereClause} ORDER BY featured DESC, id ASC`;
+    return db.prepare(sql).all(...params).map(rowToCampaign);
   }
 
   function getById(id) {
@@ -148,20 +173,26 @@ export function createSqliteCampaignRepository({
     return row ? rowToCampaign(row) : undefined;
   }
 
-  function create({ name, slug, description = '', rewardPerAction = 0, startDate = null, endDate = null }) {
+  function create({ name, slug, description = '', rewardPerAction = 0, startDate = null, endDate = null, featured = false }) {
     const createdAt = new Date().toISOString();
     const finalSlug = slug ?? generateSlug(name);
     const info = db
       .prepare(
+<<<<<<< feat/campaign-indexes-featured-hidden-explorer
+        'INSERT INTO campaigns (name, slug, description, active, reward_per_action, start_date, end_date, featured, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(name, finalSlug, description, rewardPerAction, startDate, endDate, featured ? 1 : 0, createdAt, createdAt);
+=======
         'INSERT INTO campaigns (name, slug, description, active, featured, reward_per_action, start_date, end_date, created_at) VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)',
       )
       .run(name, finalSlug, description, featured ? 1 : 0, rewardPerAction, startDate, endDate, createdAt);
+>>>>>>> main
 
     return getById(info.lastInsertRowid);
   }
 
   function update(id, fields) {
-    const allowed = ['name', 'description', 'active', 'rewardPerAction', 'startDate', 'endDate'];
+    const allowed = ['name', 'description', 'active', 'rewardPerAction', 'startDate', 'endDate', 'featured', 'hidden', 'hiddenReason'];
     const columnMap = {
       name: 'name',
       description: 'description',
@@ -170,18 +201,26 @@ export function createSqliteCampaignRepository({
       rewardPerAction: 'reward_per_action',
       startDate: 'start_date',
       endDate: 'end_date',
+      featured: 'featured',
+      hidden: 'hidden',
+      hiddenReason: 'hidden_reason',
     };
+    const booleanFields = new Set(['active', 'featured', 'hidden']);
     const sets = [];
     const values = [];
 
     for (const key of allowed) {
       if (key in fields) {
         sets.push(`${columnMap[key]} = ?`);
+<<<<<<< feat/campaign-indexes-featured-hidden-explorer
+        values.push(booleanFields.has(key) ? (fields[key] ? 1 : 0) : fields[key]);
+=======
         values.push(
           key === 'active' || key === 'featured'
             ? (fields[key] ? 1 : 0)
             : fields[key],
         );
+>>>>>>> main
       }
     }
 
