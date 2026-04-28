@@ -17,7 +17,9 @@
     "test:frontend": "npm run test --workspace=frontend",
     "deploy:testnet": "bash ./scripts/deploy-testnet.sh",
     "env:validate": "node ./scripts/validate-env.mjs",
-    "labels:sync": "node ./scripts/sync-github-labels.js"
+    "labels:sync": "node ./scripts/sync-github-labels.js",
+    "format": "prettier --write \"backend/src/**/*.{js,json}\" \"**/*.{md,yaml,yml}\"",
+    "format:check": "prettier --check \"backend/src/**/*.{js,json}\" \"**/*.{md,yaml,yml}\""
   },
   "workspaces": [
     "backend",
@@ -30,6 +32,9 @@
     "rewards",
     "campaign"
   ],
+  "devDependencies": {
+    "prettier": "^3.3.0"
+  },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
